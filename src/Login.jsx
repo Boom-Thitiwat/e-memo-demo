@@ -1,6 +1,7 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { auth } from "./firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
+import { createDemoAuthUser, DEMO_PASSWORD, DEMO_SESSION_KEY, isDemoLogin } from "./demoData";
 
 const GOLD = "#D4AF37";
 
@@ -27,7 +28,7 @@ async function sendResetEmail(email) {
   return data;
 }
 
-export default function Login() {
+export default function Login({ onDemoLogin }) {
   const [email,        setEmail]        = useState("");
   const [password,     setPassword]     = useState("");
   const [loading,      setLoading]      = useState(false);
@@ -40,6 +41,12 @@ export default function Login() {
     if (!email || !password) { setError("กรุณากรอกข้อมูลให้ครบ"); return; }
     setError(""); setLoading(true);
     try {
+      if (isDemoLogin(email, password)) {
+        const demoUser = createDemoAuthUser(email);
+        localStorage.setItem(DEMO_SESSION_KEY, demoUser.email);
+        onDemoLogin?.(demoUser);
+        return;
+      }
       await signInWithEmailAndPassword(auth, email, password);
     } catch (err) {
       const msg = {
@@ -116,6 +123,17 @@ export default function Login() {
         <button style={S.link} onClick={()=>{setResetMode(r=>!r);setError("");setResetSent(false);}}>
           {resetMode ? "← กลับหน้า Login" : "ลืมรหัสผ่าน / เข้าใช้ครั้งแรก?"}
         </button>
+        <button style={S.link} onClick={()=>{setEmail("demo.superadmin@example.com");setPassword(DEMO_PASSWORD);setError("");setResetMode(false);setResetSent(false);}}>
+          ใช้บัญชี Demo Super Admin
+        </button>
+
+        <div style={S.demoBox}>
+          <strong>Demo accounts</strong><br/>
+          demo.superadmin@example.com<br/>
+          demo.admin@example.com<br/>
+          demo.user@example.com<br/>
+          <span>password: {DEMO_PASSWORD}</span>
+        </div>
 
         {resetMode && !resetSent && (
           <p style={S.hint}>
@@ -138,6 +156,7 @@ const S = {
   link:      {background:"none",border:"none",color:"#6B7280",fontSize:"12px",cursor:"pointer",fontFamily:"inherit",textDecoration:"underline",padding:0},
   error:     {background:"#FFF1F1",border:"1px solid #FECACA",borderRadius:"7px",padding:"10px 12px",fontSize:"12px",color:"#991B1B",textAlign:"left"},
   success:   {background:"#ECFDF5",border:"1px solid #A7F3D0",borderRadius:"7px",padding:"10px 12px",fontSize:"12px",color:"#065F46",textAlign:"left",lineHeight:1.7},
+  demoBox:   {background:"#F9FAFB",border:"1px solid #E5E7EB",borderRadius:"8px",padding:"10px 12px",fontSize:"11px",color:"#6B7280",lineHeight:1.7,textAlign:"left"},
   hint:      {fontSize:"11px",color:"#9CA3AF",margin:0,lineHeight:1.6,textAlign:"left"},
 };
 

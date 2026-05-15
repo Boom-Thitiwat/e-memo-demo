@@ -1,8 +1,9 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { onAuthStateChanged, signOut, sendPasswordResetEmail } from "firebase/auth";
 import { ref, onValue, set, push, update } from "firebase/database";
 import { auth, db, DATA_PATH } from "./firebase";
 import Login from "./Login";
+import { createDemoAuthUser, createDemoData, DEMO_DATA_KEY, DEMO_SESSION_KEY } from "./demoData";
 
 // ── Firebase Auth REST API ─────────────────────────────────────────────────
 // ข้อ 1 & 4: สร้าง Auth user ผ่าน REST API โดยไม่ต้อง logout admin
@@ -110,8 +111,31 @@ const ROLE_PERMS = {
 };
 const can = (role, action) => ROLE_PERMS[role]?.includes(action) ?? false;
 
-// ── Firebase helpers ──────────────────────────────────────────────────────────
+// ── Firebase / local demo helpers ─────────────────────────────────────────────
+let demoRuntime = null;
+const cloneData = (obj) => JSON.parse(JSON.stringify(obj || {}));
+const saveDemo = (updater) => {
+  if (!demoRuntime) return null;
+  let nextData = null;
+  demoRuntime.setData((prev) => {
+    const draft = cloneData(prev);
+    nextData = updater(draft) || draft;
+    localStorage.setItem(DEMO_DATA_KEY, JSON.stringify(nextData));
+    return nextData;
+  });
+  return nextData;
+};
+
 const writeMemo = async (memoData, isNew) => {
+  if (demoRuntime) {
+    const id = isNew ? `m_${Date.now()}` : memoData.id;
+    saveDemo((d) => {
+      d.memos = d.memos || {};
+      d.memos[id] = { ...memoData, id };
+      return d;
+    });
+    return id;
+  }
   if (isNew) {
     const r = push(ref(db, `${DATA_PATH}/memos`));
     const id = r.key;
@@ -121,13 +145,34 @@ const writeMemo = async (memoData, isNew) => {
   await set(ref(db, `${DATA_PATH}/memos/${memoData.id}`), memoData);
   return memoData.id;
 };
-const patchMemo        = (id, p)   => update(ref(db, `${DATA_PATH}/memos/${id}`), p);
-const writeUsers       = (obj)     => set(ref(db, `${DATA_PATH}/users`), obj);
-const patchUser        = (id, p)   => update(ref(db, `${DATA_PATH}/users/${id}`), p);
-const writeNotifyConfig= (cfg)     => set(ref(db, `${DATA_PATH}/notifyConfig`), cfg);
-const writePdfTemplates= (tpls)    => set(ref(db, `${DATA_PATH}/pdfTemplates`), tpls);
-const writeDocCounters = (ctrs)    => set(ref(db, `${DATA_PATH}/docCounters`), ctrs);
-const writeRouteTemplates=(routes) => set(ref(db, `${DATA_PATH}/routeTemplates`), routes||[]);
+const patchMemo = async (id, p) => {
+  if (demoRuntime) return saveDemo((d) => ({ ...d, memos: { ...(d.memos || {}), [id]: { ...(d.memos?.[id] || {}), ...p } } }));
+  return update(ref(db, `${DATA_PATH}/memos/${id}`), p);
+};
+const writeUsers = async (obj) => {
+  if (demoRuntime) return saveDemo((d) => ({ ...d, users: obj }));
+  return set(ref(db, `${DATA_PATH}/users`), obj);
+};
+const patchUser = async (id, p) => {
+  if (demoRuntime) return saveDemo((d) => ({ ...d, users: { ...(d.users || {}), [id]: { ...(d.users?.[id] || {}), ...p } } }));
+  return update(ref(db, `${DATA_PATH}/users/${id}`), p);
+};
+const writeNotifyConfig = async (cfg) => {
+  if (demoRuntime) return saveDemo((d) => ({ ...d, notifyConfig: cfg }));
+  return set(ref(db, `${DATA_PATH}/notifyConfig`), cfg);
+};
+const writePdfTemplates = async (tpls) => {
+  if (demoRuntime) return saveDemo((d) => ({ ...d, pdfTemplates: tpls }));
+  return set(ref(db, `${DATA_PATH}/pdfTemplates`), tpls);
+};
+const writeDocCounters = async (ctrs) => {
+  if (demoRuntime) return saveDemo((d) => ({ ...d, docCounters: ctrs }));
+  return set(ref(db, `${DATA_PATH}/docCounters`), ctrs);
+};
+const writeRouteTemplates = async (routes) => {
+  if (demoRuntime) return saveDemo((d) => ({ ...d, routeTemplates: routes || [] }));
+  return set(ref(db, `${DATA_PATH}/routeTemplates`), routes || []);
+};
 
 async function assignDocNo(memo, users, docCounters) {
   const creator = users.find(u => u.id === memo.createdBy) || {};
@@ -136,7 +181,8 @@ async function assignDocNo(memo, users, docCounters) {
   const key     = `${dept}_${year}`;
   const cur     = (docCounters?.[key] || 0) + 1;
   const docNo   = `${dept}-${year}-${String(cur).padStart(4,"0")}`;
-  await update(ref(db, `${DATA_PATH}/docCounters`), { [key]: cur });
+  if (demoRuntime) await writeDocCounters({ ...(docCounters || {}), [key]: cur });
+  else await update(ref(db, `${DATA_PATH}/docCounters`), { [key]: cur });
   return docNo;
 }
 
@@ -2067,7 +2113,7 @@ function UsersMgmt({ users, curUser, showToast }) {
     }
     setEditing(null);
   };
-  const toggle=async u=>{if(u.id===curUser.id){showToast("ไม่สามารถระงับตัวเองได้","error");return;}await update(ref(db,`${DATA_PATH}/users/${u.id}`),{active:!u.active});showToast(u.active?"ระงับแล้ว":"เปิดแล้ว");};
+  const toggle=async u=>{if(u.id===curUser.id){showToast("ไม่สามารถระงับตัวเองได้","error");return;}await patchUser(u.id,{active:!u.active});showToast(u.active?"ระงับแล้ว":"เปิดแล้ว");};
   const del=async u=>{const newObj=Object.fromEntries(users.filter(x=>x.id!==u.id).map(x=>[x.id,x]));await writeUsers(newObj);showToast("ลบแล้ว");setDelConfirm(null);};
   // [4] Role descriptions with permission list
   const RDESC={superadmin:"เข้าถึงทุกส่วน จัดการ User ตั้งค่าระบบ Template รายงาน",admin:"สร้าง อนุมัติ ดู Memo ทั้งหมด ดูรายงาน",user:"สร้าง Memo ของตัวเอง อนุมัติ Memo ที่ได้รับมอบหมาย"};
@@ -2647,8 +2693,27 @@ export default function EMemo() {
   const [showProfile,     setShowProfile]     = useState(false);
   const [showSigZones,    setShowSigZones]    = useState(false);
 
-  useEffect(()=>{ const u=onAuthStateChanged(auth,u=>setAuthUser(u||null)); return()=>u(); },[]);
-  useEffect(()=>{ if(!authUser)return; const u=onValue(ref(db,DATA_PATH),snap=>setData(snap.val()||{users:{},memos:{},notifyConfig:{}})); return()=>u(); },[authUser]);
+  useEffect(()=>{
+    const demoEmail = localStorage.getItem(DEMO_SESSION_KEY);
+    const demoUser = demoEmail ? createDemoAuthUser(demoEmail) : null;
+    if (demoUser) { setAuthUser(demoUser); return; }
+    const u=onAuthStateChanged(auth,u=>setAuthUser(u||null));
+    return()=>u();
+  },[]);
+  useEffect(()=>{
+    if(!authUser) { demoRuntime=null; return; }
+    if(authUser.isDemo) {
+      demoRuntime = { setData };
+      const stored = localStorage.getItem(DEMO_DATA_KEY);
+      const demoData = stored ? JSON.parse(stored) : createDemoData();
+      localStorage.setItem(DEMO_DATA_KEY, JSON.stringify(demoData));
+      setData(demoData);
+      return () => { demoRuntime=null; };
+    }
+    demoRuntime=null;
+    const u=onValue(ref(db,DATA_PATH),snap=>setData(snap.val()||{users:{},memos:{},notifyConfig:{}}));
+    return()=>u();
+  },[authUser]);
 
   // ── History API (must be before early returns — Rules of Hooks) ──────────
   useEffect(() => {
@@ -2665,7 +2730,7 @@ export default function EMemo() {
   const showToast=(msg,type="success")=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3200); };
 
   if (authUser===undefined) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:BLACK,fontFamily:"'Noto Sans Thai','Sarabun',sans-serif"}}><div style={{textAlign:"center"}}><div style={{width:40,height:40,background:GOLD,borderRadius:10,margin:"0 auto 12px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:BLACK,fontWeight:700}}>E</div><div style={{color:"#666",fontSize:13}}>กำลังโหลด...</div></div></div>;
-  if (!authUser) return <Login/>;
+  if (!authUser) return <Login onDemoLogin={u=>setAuthUser(u)}/>;
   if (!data) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#F9FAFB",fontSize:13,color:"#6B7280",fontFamily:"'Noto Sans Thai','Sarabun',sans-serif"}}>กำลังโหลดข้อมูล...</div>;
 
   const pushHistory = (v, extra={}) => window.history.pushState({ view:v, ...extra }, "", window.location.pathname);
@@ -2957,7 +3022,7 @@ export default function EMemo() {
               <div style={{fontSize:10,color:GOLD}}>{curUser.signature?"✍ มีลายเซ็น":"คลิกตั้งลายเซ็น"}</div>
             </div>
           </button>
-          <button onClick={()=>signOut(auth)} style={{width:"100%",padding:"7px",background:"#1a1a1a",color:"#666",border:"1px solid #2a2a2a",borderRadius:6,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>ออกจากระบบ</button>
+          <button onClick={()=>{ if(authUser.isDemo){ localStorage.removeItem(DEMO_SESSION_KEY); demoRuntime=null; setData(null); setAuthUser(null); } else signOut(auth); }} style={{width:"100%",padding:"7px",background:"#1a1a1a",color:"#666",border:"1px solid #2a2a2a",borderRadius:6,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>ออกจากระบบ</button>
         </div>
       </div>
 
