@@ -1701,10 +1701,362 @@ function RichEditor({ value, onChange }) {
   );
 }
 
+// ── AI Memo Writer Modal ──────────────────────────────────────────────────────
+function AIMemoWriter({ onInsert, onClose }) {
+  const [brief,   setBrief]   = useState("");
+  const [tone,    setTone]    = useState("formal");
+  const [loading, setLoading] = useState(false);
+  const [result,  setResult]  = useState("");
+  const [error,   setError]   = useState("");
+
+  const generate = async () => {
+    if (!brief.trim()) return;
+    setLoading(true); setError(""); setResult("");
+    try {
+      const toneLabel = { formal:"เป็นทางการ", polite:"สุภาพกระชับ", detail:"ละเอียดครบถ้วน" }[tone] || "เป็นทางการ";
+      const prompt = `คุณเป็นผู้เชี่ยวชาญด้านการเขียนเอกสารราชการและธุรกิจภาษาไทย
+จงเขียนเนื้อหา Memo ภายในองค์กร โดยใช้ข้อมูลดังนี้:
+
+บรีฟ/ความต้องการ: ${brief.trim()}
+สไตล์การเขียน: ${toneLabel}
+
+กรุณาเขียนเนื้อหา Memo ที่สมบูรณ์ในรูปแบบ HTML โดย:
+- ใช้ <p> สำหรับย่อหน้า
+- ใช้ <strong> สำหรับหัวข้อสำคัญ
+- ใช้ <ul><li> สำหรับรายการ (ถ้ามี)
+- ไม่ต้องมี DOCTYPE, html, head, body
+- เนื้อหาต้องครบถ้วน ชัดเจน เหมาะสมกับสไตล์ที่กำหนด
+ตอบเฉพาะ HTML เนื้อหาเท่านั้น ไม่ต้องมีคำอธิบายเพิ่มเติม`;
+
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      const data = await res.json();
+      const text = (data.content || []).map(b => b.text || "").join("");
+      if (!text) throw new Error("ไม่ได้รับผลลัพธ์จาก AI");
+      setResult(text.replace(/```html|```/gi, "").trim());
+    } catch (e) {
+      setError("เกิดข้อผิดพลาด: " + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#fff",borderRadius:14,width:"100%",maxWidth:580,maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+        {/* Header */}
+        <div style={{padding:"16px 20px",borderBottom:"1px solid #F3F4F6",display:"flex",alignItems:"center",gap:10,background:"linear-gradient(135deg,#111 0%,#1e1e1e 100%)",borderRadius:"14px 14px 0 0"}}>
+          <div style={{width:32,height:32,background:GOLD,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>✨</div>
+          <div>
+            <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>AI ช่วยเขียน Memo</div>
+            <div style={{fontSize:11,color:"#888"}}>บอกความต้องการ แล้ว AI จะเขียนให้</div>
+          </div>
+          <button onClick={onClose} style={{marginLeft:"auto",background:"none",border:"none",color:"#888",fontSize:18,cursor:"pointer",lineHeight:1}}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{flex:1,overflowY:"auto",padding:20}}>
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:11,fontWeight:600,color:"#6B7280",display:"block",marginBottom:4}}>บรีฟ / สิ่งที่ต้องการให้ AI เขียน *</label>
+            <textarea
+              value={brief} onChange={e=>setBrief(e.target.value)}
+              rows={4} placeholder={"เช่น: แจ้งเรื่องการเปลี่ยนแปลงนโยบายวันหยุด ให้พนักงานทราบว่าปี 2568 มีวันหยุดเพิ่ม 2 วัน คือวันที่ 5 และ 12 มีนาคม"}
+              style={{...IS,resize:"vertical",fontFamily:"inherit",minHeight:90}}
+            />
+          </div>
+          <div style={{marginBottom:16}}>
+            <label style={{fontSize:11,fontWeight:600,color:"#6B7280",display:"block",marginBottom:6}}>สไตล์การเขียน</label>
+            <div style={{display:"flex",gap:6}}>
+              {[["formal","📋 เป็นทางการ"],["polite","🤝 สุภาพกระชับ"],["detail","📝 ละเอียดครบถ้วน"]].map(([k,l])=>(
+                <button key={k} onClick={()=>setTone(k)}
+                  style={{flex:1,padding:"7px 4px",fontSize:11,fontWeight:tone===k?600:400,background:tone===k?BLACK:"#F9FAFB",color:tone===k?GOLD:"#6B7280",border:tone===k?`1px solid ${GOLD}`:"1px solid #E5E7EB",borderRadius:7,cursor:"pointer",transition:"all .15s"}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {error && <div style={{padding:"10px 12px",background:"#FFF1F1",border:"1px solid #FECACA",borderRadius:7,fontSize:12,color:"#991B1B",marginBottom:12}}>{error}</div>}
+
+          {result && (
+            <div style={{marginBottom:4}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#6B7280",marginBottom:6,display:"flex",alignItems:"center",gap:6}}>
+                <span>✅ ผลลัพธ์จาก AI</span>
+                <span style={{fontSize:10,color:"#9CA3AF",fontWeight:400}}>(ตรวจสอบก่อนนำไปใช้)</span>
+              </div>
+              <div style={{border:"1px solid #A7F3D0",borderRadius:8,padding:"12px 14px",background:"#F0FDF4",fontSize:13,lineHeight:1.7,color:"#111",maxHeight:240,overflowY:"auto"}}
+                dangerouslySetInnerHTML={{__html: result}}/>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{padding:"12px 20px",borderTop:"1px solid #F3F4F6",display:"flex",gap:8}}>
+          {!result ? (
+            <button onClick={generate} disabled={loading||!brief.trim()}
+              style={{...BTN_GOLD,flex:1,padding:"10px",fontSize:13,opacity:loading||!brief.trim()?.0.6:1}}>
+              {loading ? "⏳ กำลังสร้าง..." : "✨ สร้างเนื้อหา"}
+            </button>
+          ) : (
+            <>
+              <button onClick={generate} disabled={loading}
+                style={{flex:1,padding:"10px",background:"#F9FAFB",color:"#374151",border:"1px solid #E5E7EB",borderRadius:6,fontSize:12,cursor:"pointer"}}>
+                {loading?"⏳ กำลังสร้างใหม่...":"🔄 สร้างใหม่"}
+              </button>
+              <button onClick={()=>{ onInsert(result); onClose(); }}
+                style={{...BTN_GOLD,flex:2,padding:"10px",fontSize:13}}>
+                ✓ ใส่ในเอกสาร
+              </button>
+            </>
+          )}
+          <button onClick={onClose} style={{padding:"10px 14px",background:"none",color:"#9CA3AF",border:"1px solid #E5E7EB",borderRadius:6,fontSize:12,cursor:"pointer"}}>ยกเลิก</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── AI Doc Summary Modal ───────────────────────────────────────────────────────
+function AIDocSummary({ memo, onClose }) {
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState(null);
+  const [error,   setError]   = useState("");
+  const [tab,     setTab]     = useState("summary");
+
+  const analyze = useCallback(async () => {
+    setLoading(true); setError(""); setSummary(null);
+    try {
+      const content = (memo.content || "").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim();
+      if (!content && !memo.title) throw new Error("ไม่มีเนื้อหาให้วิเคราะห์");
+
+      const prompt = `คุณเป็นผู้เชี่ยวชาญด้านการวิเคราะห์เอกสารธุรกิจภาษาไทย
+
+วิเคราะห์เอกสาร Memo นี้:
+ชื่อเรื่อง: ${memo.title || "-"}
+หมวดหมู่: ${memo.category || "-"}
+เนื้อหา: ${content.slice(0, 3000) || "(ไม่มีเนื้อหา)"}
+
+ตอบเป็น JSON เท่านั้น (ไม่มีข้อความอื่น ไม่มี markdown backticks) โดยมีโครงสร้าง:
+{
+  "summary": "สรุปสาระสำคัญ 3-5 ประโยค",
+  "keyPoints": ["ประเด็นสำคัญ 1", "ประเด็นสำคัญ 2", ...],
+  "budget": {
+    "found": true/false,
+    "items": [{"label":"รายการ","amount":"จำนวนเงิน","note":"หมายเหตุ"}],
+    "total": "งบรวม (ถ้ามี)",
+    "insight": "ข้อสังเกตเรื่องงบประมาณ"
+  },
+  "risks": [
+    {"level":"high/medium/low","title":"ชื่อความเสี่ยง","detail":"รายละเอียด"}
+  ],
+  "sentiment": "positive/neutral/negative",
+  "urgency": "high/medium/low"
+}`;
+
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      const data = await res.json();
+      const text = (data.content || []).map(b => b.text || "").join("").replace(/```json|```/gi,"").trim();
+      const parsed = JSON.parse(text);
+      setSummary(parsed);
+    } catch (e) {
+      setError("วิเคราะห์ไม่สำเร็จ: " + e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [memo]);
+
+  useEffect(() => { analyze(); }, [analyze]);
+
+  const RISK_COLOR = { high:{ bg:"#FFF1F1",text:"#991B1B",border:"#FECACA",dot:"#DC2626" }, medium:{ bg:"#FFFBEB",text:"#B45309",border:"#FCD34D",dot:"#F59E0B" }, low:{ bg:"#ECFDF5",text:"#065F46",border:"#A7F3D0",dot:"#22C55E" } };
+  const RISK_LABEL = { high:"ความเสี่ยงสูง", medium:"ความเสี่ยงปานกลาง", low:"ความเสี่ยงต่ำ" };
+
+  const TABS = [
+    { k:"summary", l:"📋 สรุป" },
+    { k:"budget",  l:"💰 งบประมาณ" },
+    { k:"risks",   l:"⚠️ ความเสี่ยง" },
+  ];
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#fff",borderRadius:14,width:"100%",maxWidth:560,maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+        {/* Header */}
+        <div style={{padding:"16px 20px",borderBottom:"1px solid #F3F4F6",display:"flex",alignItems:"center",gap:10,background:"linear-gradient(135deg,#111 0%,#1e1e1e 100%)",borderRadius:"14px 14px 0 0"}}>
+          <div style={{width:32,height:32,background:GOLD,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>🤖</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>AI สรุปเอกสาร</div>
+            <div style={{fontSize:11,color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{memo.title}</div>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#888",fontSize:18,cursor:"pointer",lineHeight:1}}>✕</button>
+        </div>
+
+        {/* Tabs */}
+        {summary && (
+          <div style={{display:"flex",gap:0,borderBottom:"1px solid #F3F4F6",background:"#FAFAFA"}}>
+            {TABS.map(t=>(
+              <button key={t.k} onClick={()=>setTab(t.k)}
+                style={{flex:1,padding:"10px 4px",fontSize:12,fontWeight:tab===t.k?600:400,color:tab===t.k?BLACK:"#9CA3AF",background:tab===t.k?"#fff":"transparent",border:"none",borderBottom:tab===t.k?`2px solid ${GOLD}`:"2px solid transparent",cursor:"pointer",transition:"all .15s"}}>
+                {t.l}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Body */}
+        <div style={{flex:1,overflowY:"auto",padding:20}}>
+          {loading && (
+            <div style={{textAlign:"center",padding:"40px 20px"}}>
+              <div style={{fontSize:32,marginBottom:12,animation:"spin 1s linear infinite"}}>⚙️</div>
+              <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+              <div style={{fontSize:13,color:"#374151",fontWeight:500}}>AI กำลังวิเคราะห์เอกสาร...</div>
+              <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>กรุณารอสักครู่</div>
+            </div>
+          )}
+
+          {error && (
+            <div style={{padding:"12px 14px",background:"#FFF1F1",border:"1px solid #FECACA",borderRadius:8,fontSize:13,color:"#991B1B"}}>
+              <div style={{fontWeight:600,marginBottom:4}}>⚠️ เกิดข้อผิดพลาด</div>
+              {error}
+              <button onClick={analyze} style={{display:"block",marginTop:8,padding:"6px 12px",background:"#FFF1F1",border:"1px solid #FECACA",borderRadius:6,fontSize:11,cursor:"pointer",color:"#991B1B"}}>ลองใหม่</button>
+            </div>
+          )}
+
+          {summary && tab==="summary" && (
+            <div>
+              {/* Badges */}
+              <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+                {summary.sentiment && (
+                  <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,fontWeight:600,...{positive:{background:"#ECFDF5",color:"#065F46"},neutral:{background:"#F9FAFB",color:"#6B7280"},negative:{background:"#FFF1F1",color:"#991B1B"}}[summary.sentiment]}}>
+                    {{"positive":"✅ เชิงบวก","neutral":"➖ กลาง","negative":"❌ เชิงลบ"}[summary.sentiment]}
+                  </span>
+                )}
+                {summary.urgency && (
+                  <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,fontWeight:600,...{high:{background:"#FFF1F1",color:"#991B1B"},medium:{background:"#FFFBEB",color:"#B45309"},low:{background:"#ECFDF5",color:"#065F46"}}[summary.urgency]}}>
+                    {{"high":"🔴 ความเร่งด่วนสูง","medium":"🟡 ความเร่งด่วนปานกลาง","low":"🟢 ความเร่งด่วนต่ำ"}[summary.urgency]}
+                  </span>
+                )}
+              </div>
+
+              {/* Summary text */}
+              <div style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,padding:"14px 16px",marginBottom:14}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#64748B",marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>สรุปสาระสำคัญ</div>
+                <div style={{fontSize:13,lineHeight:1.8,color:"#111"}}>{summary.summary}</div>
+              </div>
+
+              {/* Key points */}
+              {(summary.keyPoints||[]).length > 0 && (
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:"#64748B",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>ประเด็นสำคัญ</div>
+                  {(summary.keyPoints||[]).map((p,i)=>(
+                    <div key={i} style={{display:"flex",gap:10,padding:"8px 10px",background:i%2===0?"#F9FAFB":"#fff",borderRadius:7,marginBottom:4,border:"1px solid #F3F4F6"}}>
+                      <span style={{width:20,height:20,background:GOLD,color:BLACK,borderRadius:"50%",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</span>
+                      <span style={{fontSize:12,lineHeight:1.6,color:"#374151"}}>{p}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {summary && tab==="budget" && (
+            <div>
+              {summary.budget?.found ? (
+                <>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+                    <span style={{fontSize:20}}>💰</span>
+                    <span style={{fontSize:13,fontWeight:600,color:"#111"}}>พบข้อมูลงบประมาณในเอกสาร</span>
+                  </div>
+                  {(summary.budget.items||[]).map((item,i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"10px 14px",background:i%2===0?"#FFFBEB":"#fff",borderRadius:8,marginBottom:6,border:"1px solid #FCD34D"}}>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:600,color:"#111"}}>{item.label}</div>
+                        {item.note&&<div style={{fontSize:11,color:"#9CA3AF",marginTop:2}}>{item.note}</div>}
+                      </div>
+                      <div style={{fontSize:13,fontWeight:700,color:"#B45309",whiteSpace:"nowrap",marginLeft:12}}>{item.amount}</div>
+                    </div>
+                  ))}
+                  {summary.budget.total && (
+                    <div style={{display:"flex",justifyContent:"space-between",padding:"12px 14px",background:"#FFFBEB",borderRadius:8,border:"2px solid #D4AF37",marginTop:8}}>
+                      <span style={{fontSize:13,fontWeight:700,color:"#111"}}>รวมทั้งหมด</span>
+                      <span style={{fontSize:14,fontWeight:700,color:GOLD}}>{summary.budget.total}</span>
+                    </div>
+                  )}
+                  {summary.budget.insight && (
+                    <div style={{marginTop:12,padding:"10px 14px",background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:8,fontSize:12,color:"#1E40AF",lineHeight:1.6}}>
+                      💡 {summary.budget.insight}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{textAlign:"center",padding:"40px 20px",color:"#9CA3AF"}}>
+                  <div style={{fontSize:32,marginBottom:8}}>💸</div>
+                  <div style={{fontSize:13,fontWeight:500,color:"#6B7280"}}>ไม่พบข้อมูลงบประมาณในเอกสาร</div>
+                  <div style={{fontSize:12,marginTop:4}}>AI ไม่พบตัวเลขหรือรายการงบประมาณที่ชัดเจน</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {summary && tab==="risks" && (
+            <div>
+              {(summary.risks||[]).length > 0 ? (
+                <>
+                  <div style={{fontSize:12,color:"#6B7280",marginBottom:12}}>AI ตรวจพบความเสี่ยง {summary.risks.length} รายการ</div>
+                  {(summary.risks||[]).map((r,i)=>{
+                    const rc = RISK_COLOR[r.level] || RISK_COLOR.low;
+                    return (
+                      <div key={i} style={{border:`1px solid ${rc.border}`,borderRadius:10,padding:"12px 14px",marginBottom:8,background:rc.bg}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                          <span style={{width:8,height:8,borderRadius:"50%",background:rc.dot,flexShrink:0}}/>
+                          <span style={{fontSize:11,fontWeight:700,color:rc.text}}>{RISK_LABEL[r.level]||r.level}</span>
+                        </div>
+                        <div style={{fontSize:13,fontWeight:600,color:"#111",marginBottom:4}}>{r.title}</div>
+                        <div style={{fontSize:12,color:"#374151",lineHeight:1.6}}>{r.detail}</div>
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+                <div style={{textAlign:"center",padding:"40px 20px"}}>
+                  <div style={{fontSize:32,marginBottom:8}}>✅</div>
+                  <div style={{fontSize:13,fontWeight:500,color:"#065F46"}}>ไม่พบความเสี่ยงที่มีนัยสำคัญ</div>
+                  <div style={{fontSize:12,color:"#9CA3AF",marginTop:4}}>AI ไม่พบประเด็นที่น่ากังวลในเอกสารนี้</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{padding:"12px 20px",borderTop:"1px solid #F3F4F6",display:"flex",gap:8,alignItems:"center"}}>
+          <span style={{fontSize:10,color:"#9CA3AF",flex:1}}>⚠️ ผลลัพธ์จาก AI อาจมีความคลาดเคลื่อน กรุณาตรวจสอบกับเอกสารต้นฉบับ</span>
+          {summary && <button onClick={analyze} style={{...BTN_GRAY,fontSize:11}}>🔄 วิเคราะห์ใหม่</button>}
+          <button onClick={onClose} style={{...BTN_GOLD,padding:"8px 16px",fontSize:12}}>ปิด</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CreateView({ editMemo, setEditMemo, users, curUser, notifyConfig, routeTemplates, onSubmit, onCancel, isRecall, onOpenSigZones }) {
   const fileRef      = useRef();
   const memoFileRef  = useRef();
-  const [showPreview, setShowPreview] = useState(false);
+  const [showPreview,  setShowPreview]  = useState(false);
+  const [showAIWriter, setShowAIWriter] = useState(false);
   const [memoMode,    setMemoMode]    = useState(editMemo.uploadedFile ? "upload" : "type"); // "type"|"upload"
   const update   = (k,v) => setEditMemo(p=>({...p,[k]:v}));
   const setNotify= fn    => setEditMemo(p=>({...p,notify:typeof fn==="function"?fn(p.notify||{}):fn}));
@@ -1745,12 +2097,26 @@ function CreateView({ editMemo, setEditMemo, users, curUser, notifyConfig, route
           />
         </ErrorBoundary>
       )}
+      {showAIWriter && (
+        <AIMemoWriter
+          onInsert={html => {
+            setEditMemo(p=>({...p, content: (p.content||"") + (p.content?"<br><br>":"") + html }));
+            setMemoMode("type");
+          }}
+          onClose={()=>setShowAIWriter(false)}
+        />
+      )}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
         <button onClick={onCancel} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#9CA3AF",padding:0,lineHeight:1}}>←</button>
         <div style={{fontSize:18,fontWeight:600,color:"#111"}}>{editMemo.id?(isRecall?"แก้ไข Memo (เรียกคืน)":"แก้ไข Memo"):"สร้าง Memo ใหม่"}</div>
-        <button onClick={()=>setShowPreview(true)} style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,padding:"7px 14px",background:"#1D4ED8",color:"#fff",border:"none",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer"}}>
-          👁 ตัวอย่าง / PDF
-        </button>
+        <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+          <button onClick={()=>setShowAIWriter(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",background:BLACK,color:GOLD,border:`1px solid ${GOLD}`,borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer"}}>
+            ✨ AI ช่วยเขียน
+          </button>
+          <button onClick={()=>setShowPreview(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",background:"#1D4ED8",color:"#fff",border:"none",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer"}}>
+            👁 ตัวอย่าง / PDF
+          </button>
+        </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 320px",gap:16,alignItems:"start"}}>
         <div>
@@ -1847,8 +2213,9 @@ function CreateView({ editMemo, setEditMemo, users, curUser, notifyConfig, route
 
 function DetailView({ memo, users, curUser, notifyConfig, pdfTemplates, onBack, onRecall, onEdit, onAddFile, onRemoveFile, setModal, onCloneMemo, onApproverAddLevel }) {
   const fileRef   = useRef();
-  const [showPicker,   setShowPicker]   = useState(false);
-  const [showAddLevel, setShowAddLevel] = useState(false);
+  const [showPicker,    setShowPicker]    = useState(false);
+  const [showAddLevel,  setShowAddLevel]  = useState(false);
+  const [showAISummary, setShowAISummary] = useState(false);
   const [newLvUsers,   setNewLvUsers]   = useState([]);
   const [newLvMode,    setNewLvMode]    = useState("all");
   const isCreator = memo.createdBy===curUser.id;
@@ -1890,12 +2257,17 @@ function DetailView({ memo, users, curUser, notifyConfig, pdfTemplates, onBack, 
   return (
     <div style={{padding:24}}>
       {showPicker&&<TemplatePicker templates={tplList} memo={memo} users={users} onClose={()=>setShowPicker(false)}/>}
+      {showAISummary&&<AIDocSummary memo={memo} onClose={()=>setShowAISummary(false)}/>}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18}}>
         <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#9CA3AF",padding:0,lineHeight:1}}>←</button>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:16,fontWeight:600,color:"#111",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{memo.title}</div>
           {memo.docNo&&<div style={{fontSize:11,color:"#9CA3AF",marginTop:1}}>เลขที่: <span style={{fontWeight:600,color:"#374151",fontFamily:"monospace"}}>{memo.docNo}</span></div>}
         </div>
+        <button onClick={()=>setShowAISummary(true)}
+          style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",background:BLACK,color:GOLD,border:`1px solid ${GOLD}`,borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>
+          🤖 AI สรุป
+        </button>
         <StatusBadge status={memo.status}/>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 290px",gap:16,alignItems:"start"}}>
@@ -3061,6 +3433,3 @@ export default function EMemo() {
     </div>
   );
 }
-
-
-
