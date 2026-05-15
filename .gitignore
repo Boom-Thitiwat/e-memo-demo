@@ -7,3 +7,6 @@ dist/
 Thumbs.db
 git
 .env*
+*firebase-adminsdk*.json
+*service-account*.json
+serviceAccountKey.json
