@@ -72,17 +72,17 @@ async function sendMemoEmail({ to, subject, html, text, attachments }) {
 const GOLD  = "#D4AF37";
 const BLACK = "#111111";
 
-// ── Gemini AI ─────────────────────────────────────────────────────────────────
-const GEMINI_API_KEY = "AIzaSyDoPDQ-u0lhnyp2ZytO7TqKZNZp_kQ7Kho";
+// ── Groq AI ───────────────────────────────────────────────────────────────────
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || "";
 async function callGemini(prompt, maxTokens = 1500) {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-    { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: maxTokens } }) }
-  );
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
+    body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt }], max_tokens: maxTokens }),
+  });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return data.choices?.[0]?.message?.content || "";
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
