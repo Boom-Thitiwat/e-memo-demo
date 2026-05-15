@@ -1801,7 +1801,7 @@ function AIMemoWriter({ onInsert, onClose }) {
         <div style={{padding:"12px 20px",borderTop:"1px solid #F3F4F6",display:"flex",gap:8}}>
           {!result ? (
             <button onClick={generate} disabled={loading||!brief.trim()}
-              style={{...BTN_GOLD,flex:1,padding:"10px",fontSize:13,opacity:loading||!brief.trim()?.0.6:1}}>
+              style={{...BTN_GOLD,flex:1,padding:"10px",fontSize:13,opacity:(loading||!brief.trim())?0.6:1}}>
               {loading ? "⏳ กำลังสร้าง..." : "✨ สร้างเนื้อหา"}
             </button>
           ) : (
