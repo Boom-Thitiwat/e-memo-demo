@@ -72,6 +72,19 @@ async function sendMemoEmail({ to, subject, html, text, attachments }) {
 const GOLD  = "#D4AF37";
 const BLACK = "#111111";
 
+// ── Gemini AI ─────────────────────────────────────────────────────────────────
+const GEMINI_API_KEY = "AIzaSyDoPDQ-u0lhnyp2ZytO7TqKZNZp_kQ7Kho";
+async function callGemini(prompt, maxTokens = 1500) {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+    { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: maxTokens } }) }
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 const COMPANY       = "Demo Organization";
 const COMPANY_SHORT = "Demo Org";
@@ -1728,17 +1741,7 @@ function AIMemoWriter({ onInsert, onClose }) {
 - เนื้อหาต้องครบถ้วน ชัดเจน เหมาะสมกับสไตล์ที่กำหนด
 ตอบเฉพาะ HTML เนื้อหาเท่านั้น ไม่ต้องมีคำอธิบายเพิ่มเติม`;
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-      const data = await res.json();
-      const text = (data.content || []).map(b => b.text || "").join("");
+      const text = await callGemini(prompt, 1200);
       if (!text) throw new Error("ไม่ได้รับผลลัพธ์จาก AI");
       setResult(text.replace(/```html|```/gi, "").trim());
     } catch (e) {
@@ -1860,17 +1863,8 @@ function AIDocSummary({ memo, onClose }) {
   "urgency": "high/medium/low"
 }`;
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-      const data = await res.json();
-      const text = (data.content || []).map(b => b.text || "").join("").replace(/```json|```/gi,"").trim();
+      const raw = await callGemini(prompt, 1200);
+      const text = raw.replace(/```json|```/gi,"").trim();
       const parsed = JSON.parse(text);
       setSummary(parsed);
     } catch (e) {
